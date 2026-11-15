@@ -1,7 +1,7 @@
 use crate::errors::*;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
@@ -20,8 +20,18 @@ impl Config {
         let content = tokio::fs::read_to_string(path)
             .await
             .with_context(|| anyhow!("Failed to read config file: {path:?}"))?;
-        let config = toml::from_str::<Config>(&content)
+        let config = Self::parse_str(&content)
             .with_context(|| anyhow!("Failed to parse config file: {path:?}"))?;
+        Ok(config)
+    }
+
+    pub fn parse_str(s: &str) -> Result<Self> {
+        let mut config = toml::from_str::<Self>(s)?;
+        for (i, rule) in config.allowed.iter_mut().enumerate() {
+            while let Some((extra, _)) = rule.extra.pop_first() {
+                warn!("Rule #{i} has unexpected configuration key: {extra:?}");
+            }
+        }
         Ok(config)
     }
 }
@@ -119,6 +129,8 @@ pub struct Rule {
     pub arbitrary_paths: bool,
     #[serde(default)]
     pub deny: bool,
+    #[serde(flatten)]
+    extra: BTreeMap<String, toml::Value>,
 }
 
 impl Rule {
@@ -136,6 +148,35 @@ mod tests {
     fn parse_minimal_rule() {
         let rule = toml::from_str::<Rule>("").unwrap();
         assert_eq!(rule, Rule::default());
+    }
+
+    #[test]
+    fn test_rule_catch_extra_data() {
+        let rule = toml::from_str::<Rule>(
+            r#"
+hosts = ["example.com"]
+require_dns_ohttp_discovery = true
+foo = {}
+typo = "value"
+asdf = []
+        "#,
+        )
+        .unwrap();
+        assert_eq!(
+            rule,
+            Rule {
+                hosts: ["example.com".into()].into_iter().collect(),
+                require_dns_ohttp_discovery: true,
+                extra: [
+                    ("foo".into(), toml::Value::Table(Default::default())),
+                    ("typo".into(), toml::Value::String("value".into())),
+                    ("asdf".into(), toml::Value::Array(vec![])),
+                ]
+                .into_iter()
+                .collect(),
+                ..Default::default()
+            }
+        );
     }
 
     #[tokio::test]
