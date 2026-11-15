@@ -22,6 +22,7 @@ reqwest = { version = "0.13", features = ["stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_with = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tokio-rustls = "0.26"
 toml = "1"
 tower-service = "0.3"
 warp = { version = "0.4", features = ["server"] }

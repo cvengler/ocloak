@@ -1,12 +1,21 @@
 /// Source code heavily borrows from https://github.com/seanmonstar/warp internals
+use crate::config::Shared;
 use crate::errors::*;
 use hyper_util::{
     rt::{TokioIo, TokioTimer},
     service::TowerToHyperService,
 };
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::net::TcpListener;
+use tokio::{
+    io::{self, AsyncRead, AsyncWrite},
+    net::{TcpListener, TcpStream},
+    time::timeout,
+};
+use tokio_rustls::{TlsAcceptor, server::TlsStream};
 use warp::{Filter, reply::Reply};
 
 /*
@@ -48,7 +57,53 @@ where
 }
 */
 
-pub async fn serve<F, R>(routes: F, addr: SocketAddr) -> Result<()>
+#[allow(clippy::large_enum_variant)]
+enum Stream {
+    Tcp(TcpStream),
+    Tls(TlsStream<TcpStream>),
+}
+
+impl AsyncRead for Stream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Stream::Tcp(tcp) => Pin::new(tcp).poll_read(cx, buf),
+            Stream::Tls(tls) => Pin::new(tls).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for Stream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            Stream::Tcp(tcp) => Pin::new(tcp).poll_write(cx, buf),
+            Stream::Tls(tls) => Pin::new(tls).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Stream::Tcp(tcp) => Pin::new(tcp).poll_flush(cx),
+            Stream::Tls(tls) => Pin::new(tls).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Stream::Tcp(tcp) => Pin::new(tcp).poll_shutdown(cx),
+            Stream::Tls(tls) => Pin::new(tls).poll_shutdown(cx),
+        }
+    }
+}
+
+pub async fn serve<F, R>(routes: F, addr: SocketAddr, shared: Arc<Shared>) -> Result<()>
 where
     F: Filter<Extract = (R,), Error = !> + Clone + Send + Sync + 'static,
     R: Reply,
@@ -60,8 +115,33 @@ where
     loop {
         let (tcp, _remote_addr) = listener.accept().await?;
         let service = service.clone();
+        let shared = shared.clone();
 
         tokio::spawn(async move {
+            let stream = if let Some(tls) = shared.tls().as_ref() {
+                let acceptor = TlsAcceptor::from(tls.clone());
+
+                let config = shared.config();
+                match timeout(
+                    config.defaults.tls_handshake_timeout.value,
+                    acceptor.accept(tcp),
+                )
+                .await
+                {
+                    Ok(Ok(tls)) => Stream::Tls(tls),
+                    Ok(Err(err)) => {
+                        debug!("TLS connection error: {err}");
+                        return;
+                    }
+                    Err(_err) => {
+                        debug!("TLS handshake with client timed out");
+                        return;
+                    }
+                }
+            } else {
+                Stream::Tcp(tcp)
+            };
+
             let mut builder =
                 hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
 
@@ -74,7 +154,7 @@ where
             // let service = RemoteAddrService::new(service, remote_addr);
             let service = TowerToHyperService::new(service);
 
-            let connection = builder.serve_connection(TokioIo::new(tcp), service);
+            let connection = builder.serve_connection(TokioIo::new(stream), service);
 
             if let Err(err) = connection.await {
                 debug!("HTTP connection error: {err}");

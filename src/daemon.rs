@@ -117,16 +117,20 @@ pub async fn run(daemon: Daemon) -> Result<()> {
     let content_length_limit =
         warp::body::content_length_limit(config.defaults.max_request_size.value);
     let shared = Arc::new(Shared::new(config, daemon.config_path));
+    shared.reload_certs().await?;
 
     let sigterm = signals::sigterm();
     let sighup = signals::sighup(shared.clone());
 
-    let shared = warp::any().map(move || shared.clone());
+    let shared_filter = {
+        let shared = shared.clone();
+        warp::any().map(move || shared.clone())
+    };
 
     let ohttp = warp::post()
         .and(http)
         .and(resolver)
-        .and(shared)
+        .and(shared_filter)
         .and(warp::path("ohttp"))
         .and(warp::path::tail())
         .and(warp::header::optional::<String>("content-type"))
@@ -140,7 +144,7 @@ pub async fn run(daemon: Daemon) -> Result<()> {
     info!("Starting HTTP server on {}", daemon.bind_addr);
 
     tokio::select!(
-        res = server::serve(routes.with(log), daemon.bind_addr) => res,
+        res = server::serve(routes.with(log), daemon.bind_addr, shared) => res,
         _ = sigterm => Ok(()),
         _ = sighup => Ok(()),
     )

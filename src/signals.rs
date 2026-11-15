@@ -46,6 +46,10 @@ pub async fn sighup(shared: Arc<Shared>) {
                         error!("Failed to reload configuration from {path:?}: {err:#}");
                     }
                 }
+
+                if let Err(err) = shared.reload_certs().await {
+                    error!("Failed to reload TLS certificates: {err:#}");
+                }
             }
         }
     }

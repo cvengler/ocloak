@@ -8,10 +8,16 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::fs;
+use tokio_rustls::rustls::{
+    ServerConfig,
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 
 #[derive(Debug)]
 pub struct Shared {
     config: ArcSwap<Config>,
+    tls: ArcSwap<Option<Arc<ServerConfig>>>,
     path: PathBuf,
 }
 
@@ -19,8 +25,50 @@ impl Shared {
     pub fn new(config: Config, path: PathBuf) -> Self {
         Self {
             config: ArcSwap::from_pointee(config),
+            tls: ArcSwap::from_pointee(None),
             path,
         }
+    }
+
+    pub async fn reload_certs(&self) -> Result<()> {
+        let config = self.config();
+        let Some(tls) = &config.tls else {
+            return Ok(());
+        };
+
+        let cert_path = &tls.cert_path;
+        let private_key_path = &tls.private_key_path;
+
+        // Read from disk
+        let cert = fs::read(&cert_path)
+            .await
+            .with_context(|| format!("Failed to read TLS certificate file: {cert_path:?}"))?;
+
+        let private_key = fs::read(&private_key_path).await.with_context(|| {
+            format!("Failed to read TLS private key file: {private_key_path:?}")
+        })?;
+
+        // Parse file contents
+        let certs = CertificateDer::pem_slice_iter(&cert)
+            .map(|cert| cert.map_err(Error::from))
+            .collect::<Result<Vec<_>>>()
+            .with_context(|| {
+                format!("Failed to parse TLS certificate from PEM file: {cert_path:?}")
+            })?;
+
+        let private_key = PrivateKeyDer::from_pem_slice(&private_key).with_context(|| {
+            format!("Failed to parse TLS private key from PEM file: {private_key_path:?}")
+        })?;
+
+        // Finalize TLS config
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, private_key)
+            .context("Failed to create TLS server config")?;
+
+        self.tls.store(Arc::new(Some(Arc::new(config))));
+
+        Ok(())
     }
 
     pub fn replace_config(&self, config: Config) {
@@ -31,6 +79,10 @@ impl Shared {
         self.config.load()
     }
 
+    pub fn tls(&self) -> arc_swap::Guard<Arc<Option<Arc<ServerConfig>>>> {
+        self.tls.load()
+    }
+
     pub fn config_path(&self) -> &Path {
         &self.path
     }
@@ -39,6 +91,7 @@ impl Shared {
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Config {
     pub daemon: Daemon,
+    pub tls: Option<Tls>,
     pub defaults: Defaults,
     #[serde(default)]
     pub allowed: Vec<Rule>,
@@ -70,9 +123,17 @@ pub struct Daemon {
     pub bind_addr: SocketAddr,
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct Tls {
+    pub cert_path: PathBuf,
+    pub private_key_path: PathBuf,
+}
+
 #[serde_as]
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Defaults {
+    #[serde_as(as = "DisplayFromStr")]
+    pub tls_handshake_timeout: HumanTime,
     #[serde_as(as = "DisplayFromStr")]
     pub max_request_size: HumanSize,
     pub user_agent: String,
@@ -218,7 +279,9 @@ asdf = []
                 daemon: Daemon {
                     bind_addr: "127.0.0.1:1312".parse().unwrap()
                 },
+                tls: None,
                 defaults: Defaults {
+                    tls_handshake_timeout: "15s".parse().unwrap(),
                     max_request_size: "8 MiB".parse().unwrap(),
                     user_agent: "ohttp-relay".into(),
                     connect_timeout: "15s".parse().unwrap(),
@@ -253,7 +316,12 @@ asdf = []
                 daemon: Daemon {
                     bind_addr: "127.0.0.1:1312".parse().unwrap()
                 },
+                tls: Some(Tls {
+                    cert_path: "/etc/ocloak/cert.pem".into(),
+                    private_key_path: "/etc/ocloak/private_key.pem".into(),
+                }),
                 defaults: Defaults {
+                    tls_handshake_timeout: "15s".parse().unwrap(),
                     max_request_size: "8 MiB".parse().unwrap(),
                     user_agent: "ohttp-relay".into(),
                     connect_timeout: "15s".parse().unwrap(),
