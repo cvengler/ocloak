@@ -14,5 +14,6 @@ COPY --from=0 /ocloak /
 COPY contrib/ocloak.conf /etc/
 RUN setcap cap_net_bind_service=+ep /ocloak
 USER nobody
+ENV BIND_ADDR=[::]:1312
 ENTRYPOINT ["/ocloak"]
 CMD ["daemon", "-c", "/etc/ocloak.conf"]

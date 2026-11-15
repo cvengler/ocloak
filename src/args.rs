@@ -20,7 +20,7 @@ pub enum Subcommand {
 
 #[derive(Debug, Parser)]
 pub struct Daemon {
-    #[arg(short = 'B', long, env = "OCLOAK_BIND_ADDR")]
+    #[arg(short = 'B', long, env = "BIND_ADDR")]
     pub bind_addr: Option<SocketAddr>,
     #[arg(short = 'c', long)]
     pub config: PathBuf,
