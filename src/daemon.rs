@@ -4,6 +4,7 @@ use crate::errors::*;
 use crate::http;
 use crate::rules::Destination;
 use crate::server;
+use hyper::header::{CONTENT_TYPE, HeaderValue};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -79,19 +80,12 @@ async fn ohttp_post(
         );
     };
 
-    let Ok(bytes) = resp
-        .bytes()
-        .await
-        .inspect_err(|err| error!("Error: {err:#}"))
-    else {
-        return Ok(
-            warp::reply::with_status("502 - Bad Gateway\n", StatusCode::BAD_GATEWAY)
-                .into_response(),
-        );
-    };
-
-    let bytes = bytes.as_ref().to_vec();
-    Ok(warp::reply::with_status(bytes, StatusCode::OK).into_response())
+    let mut response = warp::reply::stream(resp.bytes_stream()).into_response();
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("message/ohttp-res"));
+    Ok(response)
 }
 
 async fn rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible> {
