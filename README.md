@@ -1,4 +1,4 @@
-# ocloak - Open RFC 9458 OHTTP Relay
+# o'cloak - Open RFC 9458 OHTTP Relay
 
 See [Oblivious HTTP](https://en.wikipedia.org/wiki/Oblivious_HTTP) and [RFC
 9458](https://www.rfc-editor.org/rfc/rfc9458) for details.
