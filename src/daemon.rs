@@ -1,12 +1,14 @@
-use crate::config::Config;
+use crate::config::{Config, Shared};
 use crate::dns::Resolver;
 use crate::errors::*;
 use crate::http;
 use crate::rules::Destination;
 use crate::server;
+use crate::signals;
 use hyper::header::{CONTENT_TYPE, HeaderValue};
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use warp::{
     Filter, filters::path::Tail, http::StatusCode, hyper::body::Bytes, reject::MethodNotAllowed,
@@ -16,12 +18,13 @@ use warp::{
 pub struct Daemon {
     pub bind_addr: SocketAddr,
     pub config: Config,
+    pub config_path: PathBuf,
 }
 
 async fn ohttp_post(
     http: reqwest::Client,
     resolver: Arc<Resolver>,
-    config: Arc<Config>,
+    shared: Arc<Shared>,
     path: Tail,
     content_type: Option<String>,
     body: Bytes,
@@ -42,6 +45,7 @@ async fn ohttp_post(
     };
 
     // Validate the destination against the rule set
+    let config = shared.config();
     let dest = match dest.authorize(&resolver, &config.allowed).await {
         Ok(Some(dest)) => dest,
         Ok(None) => {
@@ -102,7 +106,7 @@ async fn rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible>
 }
 
 pub async fn run(daemon: Daemon) -> Result<()> {
-    let config = Arc::new(daemon.config);
+    let config = daemon.config;
 
     let http = http::client(&config.defaults)?;
     let http = warp::any().map(move || http.clone());
@@ -112,12 +116,17 @@ pub async fn run(daemon: Daemon) -> Result<()> {
 
     let content_length_limit =
         warp::body::content_length_limit(config.defaults.max_request_size.value);
-    let config_filter = warp::any().map(move || config.clone());
+    let shared = Arc::new(Shared::new(config, daemon.config_path));
+
+    let sigterm = signals::sigterm();
+    let sighup = signals::sighup(shared.clone());
+
+    let shared = warp::any().map(move || shared.clone());
 
     let ohttp = warp::post()
         .and(http)
         .and(resolver)
-        .and(config_filter)
+        .and(shared)
         .and(warp::path("ohttp"))
         .and(warp::path::tail())
         .and(warp::header::optional::<String>("content-type"))
@@ -129,7 +138,10 @@ pub async fn run(daemon: Daemon) -> Result<()> {
 
     let routes = ohttp.recover(rejection);
     info!("Starting HTTP server on {}", daemon.bind_addr);
-    server::serve(routes.with(log), daemon.bind_addr).await?;
 
-    Ok(())
+    tokio::select!(
+        res = server::serve(routes.with(log), daemon.bind_addr) => res,
+        _ = sigterm => Ok(()),
+        _ = sighup => Ok(()),
+    )
 }

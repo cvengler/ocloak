@@ -7,6 +7,7 @@ pub mod http;
 pub mod plumbing;
 pub mod rules;
 pub mod server;
+pub mod signals;
 
 use crate::args::{Args, Subcommand};
 use crate::config::Config;
@@ -30,10 +31,16 @@ async fn main() -> Result<()> {
 
     match args.subcommand {
         Subcommand::Daemon(daemon) => {
-            let config = Config::load(&daemon.config).await?;
+            let config_path = daemon.config;
+            let config = Config::load(&config_path).await?;
             let bind_addr = daemon.bind_addr.unwrap_or(config.daemon.bind_addr);
 
-            daemon::run(Daemon { bind_addr, config }).await?;
+            daemon::run(Daemon {
+                bind_addr,
+                config,
+                config_path,
+            })
+            .await?;
         }
         Subcommand::Plumbing(plumbing) => plumbing::run(&plumbing).await?,
     }

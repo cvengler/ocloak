@@ -1,11 +1,40 @@
 use crate::errors::*;
+use arc_swap::ArcSwap;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, serde_as};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+
+#[derive(Debug)]
+pub struct Shared {
+    config: ArcSwap<Config>,
+    path: PathBuf,
+}
+
+impl Shared {
+    pub fn new(config: Config, path: PathBuf) -> Self {
+        Self {
+            config: ArcSwap::from_pointee(config),
+            path,
+        }
+    }
+
+    pub fn replace_config(&self, config: Config) {
+        self.config.store(Arc::new(config));
+    }
+
+    pub fn config(&self) -> arc_swap::Guard<Arc<Config>> {
+        self.config.load()
+    }
+
+    pub fn config_path(&self) -> &Path {
+        &self.path
+    }
+}
 
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Config {
