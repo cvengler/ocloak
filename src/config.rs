@@ -130,7 +130,7 @@ pub struct Rule {
     #[serde(default)]
     pub deny: bool,
     #[serde(flatten)]
-    extra: BTreeMap<String, toml::Value>,
+    pub extra: BTreeMap<String, toml::Value>,
 }
 
 impl Rule {

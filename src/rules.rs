@@ -94,7 +94,8 @@ impl<'a> Destination<'a> {
             let dest = if self.path.is_none() {
                 // If the destination has not specified a path
                 if let Some(path) = &rule.path {
-                    // The rule specifies a path, use it
+                    // The rule specifies a path, use it, but strip the leading slash if present
+                    let path = path.trim_prefix("/");
                     Cow::Owned(Self {
                         host: self.host.clone(),
                         path: Some(Cow::Borrowed(path)),
@@ -168,5 +169,54 @@ mod tests {
 
         let dest = Destination::parse("");
         assert_eq!(dest, None);
+    }
+
+    #[tokio::test]
+    async fn test_authorize() {
+        // empty rules
+        let resolver = Resolver::new().await;
+        let dest = Destination::parse("example.com").unwrap();
+        let rules = &[];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(resolved.as_deref(), None);
+
+        // "allow any" rule
+        let rules = &[Rule {
+            hosts: ["*".into()].into_iter().collect(),
+            ..Default::default()
+        }];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(
+            resolved.as_deref(),
+            Some(&Destination {
+                host: Cow::Borrowed("example.com"),
+                path: None,
+            })
+        );
+        assert_eq!(
+            resolved.map(|d| d.to_url()).as_deref(),
+            Some("https://example.com/.well-known/ohttp-gateway"),
+        );
+
+        // rule with specified path
+        let resolver = Resolver::new().await;
+        let dest = Destination::parse("example.com").unwrap();
+        let rules = &[Rule {
+            hosts: ["*".into()].into_iter().collect(),
+            path: Some("/.not-well-known/ohttp-gateway".into()),
+            ..Default::default()
+        }];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(
+            resolved.as_deref(),
+            Some(&Destination {
+                host: Cow::Borrowed("example.com"),
+                path: Some(Cow::Borrowed(".not-well-known/ohttp-gateway")),
+            })
+        );
+        assert_eq!(
+            resolved.map(|d| d.to_url()).as_deref(),
+            Some("https://example.com/.not-well-known/ohttp-gateway"),
+        );
     }
 }
