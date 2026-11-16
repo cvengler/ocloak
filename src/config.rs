@@ -121,6 +121,7 @@ impl Config {
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Daemon {
     pub bind_addr: SocketAddr,
+    pub index_file: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -277,7 +278,8 @@ asdf = []
             config,
             Config {
                 daemon: Daemon {
-                    bind_addr: "127.0.0.1:1312".parse().unwrap()
+                    bind_addr: "127.0.0.1:1312".parse().unwrap(),
+                    index_file: None,
                 },
                 tls: None,
                 defaults: Defaults {
@@ -314,7 +316,8 @@ asdf = []
             config,
             Config {
                 daemon: Daemon {
-                    bind_addr: "127.0.0.1:1312".parse().unwrap()
+                    bind_addr: "127.0.0.1:1312".parse().unwrap(),
+                    index_file: Some("contrib/index.html".into()),
                 },
                 tls: Some(Tls {
                     cert_path: "/etc/ocloak/cert.pem".into(),

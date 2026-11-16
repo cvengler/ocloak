@@ -10,6 +10,10 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::fs;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_util::io::ReaderStream;
+use warp::reject::{self, Rejection};
 use warp::{
     Filter, filters::path::Tail, http::StatusCode, hyper::body::Bytes, reject::MethodNotAllowed,
     reply::Reply,
@@ -92,6 +96,52 @@ async fn ohttp_post(
     Ok(response)
 }
 
+async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
+    let config = shared.config();
+    let Some(path) = &config.daemon.index_file else {
+        return Err(reject::not_found());
+    };
+
+    let Ok(file) = fs::File::open(path)
+        .await
+        .with_context(|| format!("Failed to open index file: {path:?}"))
+        .inspect_err(|err| error!("Error: {err:#}"))
+    else {
+        return Ok(warp::reply::with_status(
+            "501 - Server Error\n",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )
+        .into_response());
+    };
+
+    let mut file = BufReader::new(file);
+    let Ok(peek) = file
+        .fill_buf()
+        .await
+        .with_context(|| format!("Failed to read from index file: {path:?}"))
+        .inspect_err(|err| error!("Error: {err:#}"))
+    else {
+        return Ok(warp::reply::with_status(
+            "501 - Server Error\n",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )
+        .into_response());
+    };
+
+    let content_type = if peek.starts_with(b"<") {
+        "text/html; charset=utf-8"
+    } else {
+        "text/plain; charset=utf-8"
+    };
+
+    let stream = ReaderStream::new(file);
+    let mut response = warp::reply::stream(stream).into_response();
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+    Ok(response)
+}
+
 async fn rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible> {
     let (code, message) = if err.is_not_found() {
         (StatusCode::NOT_FOUND, "POST /ohttp/{host}\n")
@@ -130,17 +180,21 @@ pub async fn run(daemon: Daemon) -> Result<()> {
     let ohttp = warp::post()
         .and(http)
         .and(resolver)
-        .and(shared_filter)
+        .and(shared_filter.clone())
         .and(warp::path("ohttp"))
         .and(warp::path::tail())
         .and(warp::header::optional::<String>("content-type"))
         .and(content_length_limit)
         .and(warp::body::bytes())
         .and_then(ohttp_post);
+    let index = warp::get()
+        .and(shared_filter)
+        .and(warp::path::end())
+        .and_then(index);
 
     let log = warp::log("httpd");
 
-    let routes = ohttp.recover(rejection);
+    let routes = ohttp.or(index).recover(rejection);
     info!("Starting HTTP server on {}", daemon.bind_addr);
 
     tokio::select!(
