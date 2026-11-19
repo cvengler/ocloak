@@ -142,8 +142,12 @@ where
                 Stream::Tcp(tcp)
             };
 
+            // Explicitly call `.http1_only()` to avoid a code branch that ignores timeouts
+            // https://github.com/hyperium/hyper/issues/3962
+            // https://chaos.social/@kpcyrd/117627839810424285
             let mut builder =
-                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
+                    .http1_only();
 
             builder
                 .http1()
