@@ -5,10 +5,11 @@ use crate::http;
 use crate::rules::Destination;
 use crate::server;
 use crate::signals;
-use hyper::header::{CONTENT_TYPE, HeaderValue};
+use hyper::header::{CONTENT_TYPE, HeaderName, HeaderValue};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -98,7 +99,7 @@ async fn ohttp_post(
 
 async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
     let config = shared.config();
-    let Some(path) = &config.daemon.index_file else {
+    let Some(path) = &config.index.file_path else {
         return Err(reject::not_found());
     };
 
@@ -128,17 +129,27 @@ async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
         .into_response());
     };
 
-    let content_type = if peek.starts_with(b"<") {
-        "text/html; charset=utf-8"
+    let content_type = if let Some(content_type) = &config.index.content_type
+        && let Ok(content_type) = HeaderValue::from_str(content_type)
+    {
+        content_type
+    } else if peek.starts_with(b"<") {
+        HeaderValue::from_static("text/html; charset=utf-8")
     } else {
-        "text/plain; charset=utf-8"
+        HeaderValue::from_static("text/plain; charset=utf-8")
     };
 
     let stream = ReaderStream::new(file);
     let mut response = warp::reply::stream(stream).into_response();
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_TYPE, content_type);
+    for (key, value) in &config.index.http_headers {
+        if let Ok(header_name) = HeaderName::from_str(key)
+            && let Ok(header_value) = HeaderValue::from_str(value)
+        {
+            headers.insert(header_name, header_value);
+        }
+    }
     Ok(response)
 }
 

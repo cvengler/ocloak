@@ -92,6 +92,8 @@ impl Shared {
 pub struct Config {
     pub daemon: Daemon,
     pub tls: Option<Tls>,
+    #[serde(default)]
+    pub index: Index,
     pub defaults: Defaults,
     #[serde(default)]
     pub allowed: Vec<Rule>,
@@ -121,13 +123,20 @@ impl Config {
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Daemon {
     pub bind_addr: SocketAddr,
-    pub index_file: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Tls {
     pub cert_path: PathBuf,
     pub private_key_path: PathBuf,
+}
+
+#[derive(Debug, Default, PartialEq, Deserialize)]
+pub struct Index {
+    pub file_path: Option<PathBuf>,
+    pub content_type: Option<String>,
+    #[serde(default)]
+    pub http_headers: BTreeMap<String, String>,
 }
 
 #[serde_as]
@@ -279,9 +288,9 @@ asdf = []
             Config {
                 daemon: Daemon {
                     bind_addr: "127.0.0.1:1312".parse().unwrap(),
-                    index_file: None,
                 },
                 tls: None,
+                index: Default::default(),
                 defaults: Defaults {
                     tls_handshake_timeout: "15s".parse().unwrap(),
                     max_request_size: "8 MiB".parse().unwrap(),
@@ -317,12 +326,19 @@ asdf = []
             Config {
                 daemon: Daemon {
                     bind_addr: "127.0.0.1:1312".parse().unwrap(),
-                    index_file: Some("contrib/index.html".into()),
                 },
                 tls: Some(Tls {
                     cert_path: "/etc/ocloak/cert.pem".into(),
                     private_key_path: "/etc/ocloak/private_key.pem".into(),
                 }),
+                index: Index {
+                    file_path: Some("contrib/index.html".into()),
+                    content_type: Some("text/html; charset=utf-8".into()),
+                    http_headers: BTreeMap::from([(
+                        "Strict-Transport-Security".into(),
+                        "max-age=31536000; includeSubDomains; preload".into(),
+                    )]),
+                },
                 defaults: Defaults {
                     tls_handshake_timeout: "15s".parse().unwrap(),
                     max_request_size: "8 MiB".parse().unwrap(),
