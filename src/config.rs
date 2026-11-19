@@ -1,7 +1,8 @@
 use crate::errors::*;
 use arc_swap::ArcSwap;
+use hyper::header::{HeaderName, HeaderValue};
 use serde::Deserialize;
-use serde_with::{DisplayFromStr, serde_as};
+use serde_with::{DisplayFromStr, Map, serde_as};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -131,12 +132,15 @@ pub struct Tls {
     pub private_key_path: PathBuf,
 }
 
+#[serde_as]
 #[derive(Debug, Default, PartialEq, Deserialize)]
 pub struct Index {
     pub file_path: Option<PathBuf>,
-    pub content_type: Option<String>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub content_type: Option<HeaderValue>,
     #[serde(default)]
-    pub http_headers: BTreeMap<String, String>,
+    #[serde_as(as = "Map<DisplayFromStr, DisplayFromStr>")]
+    pub http_headers: Vec<(HeaderName, HeaderValue)>,
 }
 
 #[serde_as]
@@ -333,11 +337,13 @@ asdf = []
                 }),
                 index: Index {
                     file_path: Some("contrib/index.html".into()),
-                    content_type: Some("text/html; charset=utf-8".into()),
-                    http_headers: BTreeMap::from([(
-                        "Strict-Transport-Security".into(),
-                        "max-age=31536000; includeSubDomains; preload".into(),
-                    )]),
+                    content_type: Some("text/html; charset=utf-8".parse().unwrap()),
+                    http_headers: vec![(
+                        "Strict-Transport-Security".parse().unwrap(),
+                        "max-age=31536000; includeSubDomains; preload"
+                            .parse()
+                            .unwrap(),
+                    )],
                 },
                 defaults: Defaults {
                     tls_handshake_timeout: "15s".parse().unwrap(),

@@ -5,11 +5,10 @@ use crate::http;
 use crate::rules::Destination;
 use crate::server;
 use crate::signals;
-use hyper::header::{CONTENT_TYPE, HeaderName, HeaderValue};
+use hyper::header::{CONTENT_TYPE, HeaderValue};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -129,9 +128,7 @@ async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
         .into_response());
     };
 
-    let content_type = if let Some(content_type) = &config.index.content_type
-        && let Ok(content_type) = HeaderValue::from_str(content_type)
-    {
+    let content_type = if let Some(content_type) = config.index.content_type.clone() {
         content_type
     } else if peek.starts_with(b"<") {
         HeaderValue::from_static("text/html; charset=utf-8")
@@ -143,13 +140,7 @@ async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
     let mut response = warp::reply::stream(stream).into_response();
     let headers = response.headers_mut();
     headers.insert(CONTENT_TYPE, content_type);
-    for (key, value) in &config.index.http_headers {
-        if let Ok(header_name) = HeaderName::from_str(key)
-            && let Ok(header_value) = HeaderValue::from_str(value)
-        {
-            headers.insert(header_name, header_value);
-        }
-    }
+    headers.extend(config.index.http_headers.iter().cloned());
     Ok(response)
 }
 
