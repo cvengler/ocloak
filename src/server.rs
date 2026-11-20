@@ -113,7 +113,10 @@ where
     let service = warp::service(routes);
 
     loop {
-        let (tcp, _remote_addr) = listener.accept().await?;
+        let Ok((tcp, _remote_addr)) = listener.accept().await else {
+            warn!("Failed to accept TCP connection");
+            continue;
+        };
         let service = service.clone();
         let shared = shared.clone();
 
