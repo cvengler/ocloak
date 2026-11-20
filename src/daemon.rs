@@ -25,6 +25,10 @@ pub struct Daemon {
     pub config_path: PathBuf,
 }
 
+fn bad_gateway() -> impl warp::Reply {
+    warp::reply::with_status("502 - Bad Gateway\n", StatusCode::BAD_GATEWAY)
+}
+
 async fn ohttp_post(
     http: reqwest::Client,
     resolver: Arc<Resolver>,
@@ -61,10 +65,7 @@ async fn ohttp_post(
         }
         Err(err) => {
             error!("Error: {err:#}");
-            return Ok(
-                warp::reply::with_status("502 - Bad Gateway\n", StatusCode::BAD_GATEWAY)
-                    .into_response(),
-            );
+            return Ok(bad_gateway().into_response());
         }
     };
 
@@ -82,14 +83,16 @@ async fn ohttp_post(
         .await;
 
     let Ok(resp) = gateway_response.inspect_err(|err| error!("Error: {err:#}")) else {
-        return Ok(
-            warp::reply::with_status("502 - Bad Gateway\n", StatusCode::BAD_GATEWAY)
-                .into_response(),
-        );
+        return Ok(bad_gateway().into_response());
     };
+    let status = resp.status();
+
+    if !(status.is_success() || status.is_client_error() || status.is_server_error()) {
+        return Ok(bad_gateway().into_response());
+    }
 
     let mut response = warp::reply::stream(resp.bytes_stream()).into_response();
-    *response.status_mut() = StatusCode::OK;
+    *response.status_mut() = status;
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static("message/ohttp-res"));
