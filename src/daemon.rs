@@ -5,6 +5,8 @@ use crate::http;
 use crate::rules::Destination;
 use crate::server;
 use crate::signals;
+use futures_util::{Stream, StreamExt};
+use hyper::body::Buf;
 use hyper::header::{CONTENT_TYPE, HeaderValue};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -12,10 +14,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::time::{Duration, timeout};
 use tokio_util::io::ReaderStream;
-use warp::reject::{self, Rejection};
 use warp::{
-    Filter, filters::path::Tail, http::StatusCode, hyper::body::Bytes, reject::MethodNotAllowed,
+    Filter,
+    filters::path::Tail,
+    http::StatusCode,
+    reject::{self, MethodNotAllowed, Rejection},
     reply::Reply,
 };
 
@@ -29,13 +34,31 @@ fn bad_gateway() -> impl warp::Reply {
     warp::reply::with_status("502 - Bad Gateway\n", StatusCode::BAD_GATEWAY)
 }
 
+async fn read_body_stream(
+    mut stream: impl Stream<Item = Result<impl Buf, warp::Error>> + Unpin + Send + Sync,
+    read_timeout: Duration,
+    size_limit: usize,
+) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    while let Some(chunk) = timeout(read_timeout, stream.next()).await?.transpose()? {
+        let chunk = chunk.chunk();
+
+        if buf.len().saturating_add(chunk.len()) > size_limit {
+            return Err(anyhow!("Body size exceeds limit"));
+        }
+
+        buf.extend_from_slice(chunk);
+    }
+    Ok(buf)
+}
+
 async fn ohttp_post(
     http: reqwest::Client,
     resolver: Arc<Resolver>,
     shared: Arc<Shared>,
     path: Tail,
     content_type: Option<String>,
-    body: Bytes,
+    body: impl Stream<Item = Result<impl Buf, warp::Error>> + Unpin + Send + Sync,
 ) -> Result<impl warp::Reply, Infallible> {
     if content_type.as_deref() != Some("message/ohttp-req") {
         return Ok(warp::reply::with_status(
@@ -67,6 +90,26 @@ async fn ohttp_post(
             error!("Error: {err:#}");
             return Ok(bad_gateway().into_response());
         }
+    };
+
+    // Read request body
+    let Ok(body) = read_body_stream(
+        body,
+        config.defaults.read_timeout.value,
+        config
+            .defaults
+            .max_request_size
+            .value
+            .try_into()
+            .unwrap_or(usize::MAX),
+    )
+    .await
+    else {
+        return Ok(warp::reply::with_status(
+            "408 - Request Timeout\n",
+            StatusCode::REQUEST_TIMEOUT,
+        )
+        .into_response());
     };
 
     // Prepare the request
@@ -169,8 +212,6 @@ pub async fn run(daemon: Daemon) -> Result<()> {
     let resolver = Arc::new(Resolver::new().await);
     let resolver = warp::any().map(move || resolver.clone());
 
-    let content_length_limit =
-        warp::body::content_length_limit(config.defaults.max_request_size.value);
     let shared = Arc::new(Shared::new(config, daemon.config_path));
     shared.reload_certs().await?;
 
@@ -189,8 +230,7 @@ pub async fn run(daemon: Daemon) -> Result<()> {
         .and(warp::path("ohttp"))
         .and(warp::path::tail())
         .and(warp::header::optional::<String>("content-type"))
-        .and(content_length_limit)
-        .and(warp::body::bytes())
+        .and(warp::body::stream())
         .and_then(ohttp_post);
     let index = warp::get()
         .and(shared_filter)

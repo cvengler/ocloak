@@ -1197,6 +1197,7 @@ dependencies = [
  "clap",
  "domain",
  "env_logger",
+ "futures-util",
  "hyper",
  "hyper-util",
  "log",
