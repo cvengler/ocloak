@@ -3,6 +3,22 @@ use crate::dns::Resolver;
 use crate::errors::*;
 use std::borrow::Cow;
 
+pub fn normalize_host(raw: &str) -> Option<String> {
+    // WHATWG considers `*` and `*.com` valid url hostnames, but we don't
+    if raw.contains('*') {
+        return None;
+    }
+
+    let host = url::Host::parse(raw).ok()?;
+    if let url::Host::Domain(domain) = host
+        && !domain.ends_with('.')
+    {
+        Some(domain)
+    } else {
+        None
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Destination<'a> {
     pub host: Cow<'a, str>,
@@ -19,12 +35,10 @@ impl<'a> Destination<'a> {
             .map(|(host, tail)| (host, Some(tail)))
             .unwrap_or_else(|| (path, None));
 
-        if host.is_empty() {
-            return None;
-        }
+        let host = normalize_host(host)?;
 
         Some(Self {
-            host: Cow::Borrowed(host),
+            host: Cow::Owned(host),
             path: tail.map(Cow::Borrowed),
         })
     }
@@ -131,6 +145,36 @@ impl<'a> Destination<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_normalize_hosts() {
+        for (input, expected) in &[
+            ("example.com", Some("example.com")),
+            ("example.com.", None),
+            ("EXAMPLE.COM", Some("example.com")),
+            ("example.com:8080", None),
+            ("example.com%2E", None),
+            ("example.com\u{3002}", None),
+            ("example.com\x00", None),
+            ("example%2ecom", Some("example.com")),
+            ("exa\u{AD}mple.com", Some("example.com")),
+            ("bücher.tld", Some("xn--bcher-kva.tld")),
+            ("😺.com", Some("xn--138h.com")),
+            ("xn--138h.com", Some("xn--138h.com")),
+            ("invalid.host.\\q.example.com", None),
+            ("example.com/foo", None),
+            ("", None),
+            (" ", None),
+            (".", None),
+            ("https://example.com", None),
+            ("foo@example.com", None),
+            ("foo:bar@example.com", None),
+            ("*", None),
+            ("*.example.com", None),
+        ] {
+            assert_eq!(normalize_host(input).as_deref(), *expected);
+        }
+    }
 
     #[test]
     fn test_map_path_to_url() {

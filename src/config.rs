@@ -1,9 +1,11 @@
 use crate::errors::*;
+use crate::rules;
 use arc_swap::ArcSwap;
 use hyper::header::{HeaderName, HeaderValue};
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, Map, serde_as};
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -116,6 +118,19 @@ impl Config {
             while let Some((extra, _)) = rule.extra.pop_first() {
                 warn!("Rule #{i} has unexpected configuration key: {extra:?}");
             }
+            rule.hosts = mem::take(&mut rule.hosts)
+                .into_iter()
+                .filter_map(|host| {
+                    if host == "*" {
+                        Some("*".to_string())
+                    } else if let Some(host) = rules::normalize_host(&host) {
+                        Some(host)
+                    } else {
+                        warn!("Rule #{i} has invalid host, ignoring: {host:?}");
+                        None
+                    }
+                })
+                .collect();
         }
         Ok(config)
     }
