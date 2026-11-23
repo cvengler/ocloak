@@ -1201,6 +1201,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "log",
+ "memchr",
  "moka",
  "reqwest",
  "serde",

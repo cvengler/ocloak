@@ -18,6 +18,7 @@ futures-util = { version = "0.3", default-features = false }
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "service", "http1"] }
 log = "0.4"
+memchr = "2"
 moka = { version = "0.12", features = ["future"] }
 reqwest = { version = "0.13", features = ["stream"] }
 serde = { version = "1", features = ["derive"] }

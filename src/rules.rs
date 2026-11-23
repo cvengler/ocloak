@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 pub fn normalize_host(raw: &str) -> Option<String> {
     // WHATWG considers `*` and `*.com` valid url hostnames, but we don't
-    if raw.contains('*') {
+    if memchr::memchr(b'*', raw.as_bytes()).is_some() {
         return None;
     }
 
