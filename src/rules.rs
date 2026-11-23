@@ -21,7 +21,7 @@ pub fn normalize_host(raw: &str) -> Option<String> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Destination<'a> {
-    pub host: Cow<'a, str>,
+    pub host: String,
     pub path: Option<Cow<'a, str>>,
 }
 
@@ -38,7 +38,7 @@ impl<'a> Destination<'a> {
         let host = normalize_host(host)?;
 
         Some(Self {
-            host: Cow::Owned(host),
+            host,
             path: tail.map(Cow::Borrowed),
         })
     }
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(
             dest,
             Some(Destination {
-                host: Cow::Borrowed("example.com"),
+                host: "example.com".into(),
                 path: None,
             })
         );
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(
             dest,
             Some(Destination {
-                host: Cow::Borrowed("example.com"),
+                host: "example.com".into(),
                 path: Some(Cow::Borrowed("some/path")),
             })
         );
@@ -205,7 +205,7 @@ mod tests {
         assert_eq!(
             dest,
             Some(Destination {
-                host: Cow::Borrowed("example.com"),
+                host: "example.com".into(),
                 path: Some(Cow::Borrowed("")),
             })
         );
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(
             resolved.as_deref(),
             Some(&Destination {
-                host: Cow::Borrowed("example.com"),
+                host: "example.com".into(),
                 path: None,
             })
         );
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(
             resolved.as_deref(),
             Some(&Destination {
-                host: Cow::Borrowed("example.com"),
+                host: "example.com".into(),
                 path: Some(Cow::Borrowed(".not-well-known/ohttp-gateway")),
             })
         );
