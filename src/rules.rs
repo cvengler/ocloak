@@ -166,6 +166,11 @@ mod tests {
             ("foo:bar@example.com", None),
             ("*", None),
             ("*.example.com", None),
+            ("127.0.0.1", None),
+            ("127.0.0.1:8080", None),
+            ("::1", None),
+            ("[::1]", None),
+            ("[::1]:8080", None),
         ] {
             assert_eq!(normalize_host(input).as_deref(), *expected);
         }
