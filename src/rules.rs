@@ -171,6 +171,7 @@ mod tests {
             ("::1", None),
             ("[::1]", None),
             ("[::1]:8080", None),
+            ("%example.com", None),
         ] {
             assert_eq!(normalize_host(input).as_deref(), *expected);
         }
