@@ -4,7 +4,7 @@ After=network-online.target nss-lookup.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/ocloak daemon -c /etc/ocloak.conf
+ExecStart=/usr/bin/ocloak daemon -c /etc/ocloak/ocloak.conf
 ExecReload=/bin/kill -HUP $MAINPID
 
 DynamicUser=yes

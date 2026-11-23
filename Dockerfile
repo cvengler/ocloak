@@ -11,9 +11,9 @@ RUN --mount=type=cache,target=/var/cache/buildkit \
 FROM alpine:3.24
 RUN apk add libcap-setcap
 COPY --from=0 /ocloak /
-COPY contrib/ocloak.conf /etc/
+COPY contrib/ocloak.conf /etc/ocloak/
 RUN setcap cap_net_bind_service=+ep /ocloak
 USER nobody
 ENV BIND_ADDR=[::]:1312
 ENTRYPOINT ["/ocloak"]
-CMD ["daemon", "-c", "/etc/ocloak.conf"]
+CMD ["daemon", "-c", "/etc/ocloak/ocloak.conf"]
