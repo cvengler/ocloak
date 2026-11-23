@@ -30,6 +30,10 @@ pub struct Daemon {
     pub config_path: PathBuf,
 }
 
+fn server_error() -> impl warp::Reply {
+    warp::reply::with_status("500 - Server Error\n", StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 fn bad_gateway() -> impl warp::Reply {
     warp::reply::with_status("502 - Bad Gateway\n", StatusCode::BAD_GATEWAY)
 }
@@ -153,11 +157,7 @@ async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
         .with_context(|| format!("Failed to open index file: {path:?}"))
         .inspect_err(|err| error!("Error: {err:#}"))
     else {
-        return Ok(warp::reply::with_status(
-            "501 - Server Error\n",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
-        .into_response());
+        return Ok(server_error().into_response());
     };
 
     let mut file = BufReader::new(file);
@@ -167,11 +167,7 @@ async fn index(shared: Arc<Shared>) -> Result<impl warp::Reply, Rejection> {
         .with_context(|| format!("Failed to read from index file: {path:?}"))
         .inspect_err(|err| error!("Error: {err:#}"))
     else {
-        return Ok(warp::reply::with_status(
-            "501 - Server Error\n",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
-        .into_response());
+        return Ok(server_error().into_response());
     };
 
     let content_type = if let Some(content_type) = config.index.content_type.clone() {
