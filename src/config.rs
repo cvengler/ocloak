@@ -122,7 +122,7 @@ impl Config {
                 .into_iter()
                 .filter_map(|host| {
                     if host == "*" {
-                        Some("*".to_string())
+                        Some(host)
                     } else if let Some(host) = rules::normalize_host(&host) {
                         Some(host)
                     } else {
