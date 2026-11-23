@@ -56,14 +56,9 @@ impl<'a> Destination<'a> {
         url
     }
 
-    /// Check if the destination has a port specified in the host
-    pub fn includes_port(&self) -> bool {
-        self.host.contains(':')
-    }
-
     /// Check if the destination matches a given rule's host filter
     pub fn matches_rule_selector(&self, rule: &Rule) -> bool {
-        rule.contains_host(&self.host) || (rule.contains_host("*") && !self.includes_port())
+        rule.contains_host(&self.host) || rule.contains_host("*")
     }
 
     /// Check if the destination is allowed by evaluating all rules
