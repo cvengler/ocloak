@@ -36,6 +36,7 @@ impl Shared {
     pub async fn reload_certs(&self) -> Result<()> {
         let config = self.config();
         let Some(tls) = &config.tls else {
+            self.tls.store(Arc::new(None));
             return Ok(());
         };
 
