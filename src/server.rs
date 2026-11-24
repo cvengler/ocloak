@@ -13,7 +13,7 @@ use std::time::Duration;
 use tokio::{
     io::{self, AsyncRead, AsyncWrite},
     net::{TcpListener, TcpStream},
-    time::timeout,
+    time::{sleep, timeout},
 };
 use tokio_rustls::{TlsAcceptor, server::TlsStream};
 use warp::{Filter, reply::Reply};
@@ -115,6 +115,7 @@ where
     loop {
         let Ok((tcp, _remote_addr)) = listener.accept().await else {
             warn!("Failed to accept TCP connection");
+            sleep(Duration::from_millis(100)).await;
             continue;
         };
         let service = service.clone();
