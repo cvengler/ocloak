@@ -48,7 +48,7 @@ Instead of using a reverse proxy for TLS termination, you can configure TLS dire
 
 [tls]
 cert_path = "/etc/ocloak/cert.pem"
-key_path = "/etc/ocloak/key.pem"
+private_key_path = "/etc/ocloak/key.pem"
 ```
 
 ## Setting up an info page
