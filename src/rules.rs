@@ -105,24 +105,30 @@ impl<'a> Destination<'a> {
                 if let Some(path) = &rule.path {
                     // The rule specifies a path, use it, but strip the leading slash if present
                     let path = path.trim_prefix("/");
-                    Cow::Owned(Self {
+                    Some(Cow::Owned(Self {
                         host: self.host.clone(),
                         path: Some(Cow::Borrowed(path)),
-                    })
+                    }))
                 } else {
                     // Leave the path as `None`, implies default path
-                    Cow::Borrowed(self)
+                    Some(Cow::Borrowed(self))
                 }
-            } else if rule.arbitrary_paths {
+            } else if !rule.deny && rule.arbitrary_paths == Some(true) {
                 // If a custom path is set and the rule allows arbitrary paths, permit it
-                Cow::Borrowed(self)
+                Some(Cow::Borrowed(self))
+            } else if rule.deny && rule.arbitrary_paths != Some(false) {
+                // If a custom path is set and the rule is a deny rule, proceed
+                // with this rule unless arbitrary_paths is explicitly set to false
+                None
             } else {
                 continue;
             };
 
             trace!("Request has matched rule #{i}");
 
-            if !rule.deny {
+            if !rule.deny
+                && let Some(dest) = dest
+            {
                 // Return the resolved, permitted destination
                 return Ok(Some(dest));
             } else {
@@ -262,6 +268,126 @@ mod tests {
         assert_eq!(
             resolved.map(|d| d.to_url()).as_deref(),
             Some("https://example.com/.not-well-known/ohttp-gateway"),
+        );
+    }
+
+    #[tokio::test]
+    async fn test_deny_and_custom_paths() {
+        // Custom paths only match rules if arbitrary_paths=true, but custom paths always
+        // match deny rules unless arbitrary_paths=false.
+
+        let resolver = Resolver::new().await;
+
+        // no path, deny arbitrary_paths not set
+        let dest = Destination::parse("example.com").unwrap();
+        let rules = &[
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                deny: true,
+                ..Default::default()
+            },
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+        ];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(resolved.as_deref(), None);
+
+        // no path, deny arbitrary_paths=true
+        let dest = Destination::parse("example.com").unwrap();
+        let rules = &[
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                deny: true,
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+        ];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(resolved.as_deref(), None);
+
+        // no path, deny arbitrary_paths=false
+        let dest = Destination::parse("example.com").unwrap();
+        let rules = &[
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                deny: true,
+                arbitrary_paths: Some(false),
+                ..Default::default()
+            },
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+        ];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(resolved.as_deref(), None);
+
+        // path, deny arbitrary_paths not set
+        let dest = Destination::parse("example.com/foo").unwrap();
+        let rules = &[
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                deny: true,
+                ..Default::default()
+            },
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+        ];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(resolved.as_deref(), None);
+
+        // path, deny arbitrary_paths=true
+        let dest = Destination::parse("example.com/foo").unwrap();
+        let rules = &[
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                deny: true,
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+        ];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(resolved.as_deref(), None);
+
+        // path, deny arbitrary_paths=false
+        let dest = Destination::parse("example.com/foo").unwrap();
+        let rules = &[
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                deny: true,
+                arbitrary_paths: Some(false),
+                ..Default::default()
+            },
+            Rule {
+                hosts: ["*".into()].into_iter().collect(),
+                arbitrary_paths: Some(true),
+                ..Default::default()
+            },
+        ];
+        let resolved = dest.authorize(&resolver, rules).await.unwrap();
+        assert_eq!(
+            resolved.as_deref(),
+            Some(&Destination {
+                host: "example.com".into(),
+                path: Some(Cow::Borrowed("foo")),
+            })
         );
     }
 }

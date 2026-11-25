@@ -245,8 +245,7 @@ pub struct Rule {
     pub path: Option<String>,
     #[serde(default)]
     pub require_dns_ohttp_discovery: bool,
-    #[serde(default)]
-    pub arbitrary_paths: bool,
+    pub arbitrary_paths: Option<bool>,
     #[serde(default)]
     pub deny: bool,
     #[serde(flatten)]
@@ -376,7 +375,7 @@ asdf = []
                     },
                     Rule {
                         hosts: ["example.com"].into_iter().map(String::from).collect(),
-                        arbitrary_paths: true,
+                        arbitrary_paths: Some(true),
                         ..Default::default()
                     },
                     Rule {

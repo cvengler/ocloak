@@ -40,6 +40,9 @@ Use *path* to change the default */.well-known/ohttp-gateway* request path to
 something else. Requests that include their own path match only rules with
 *arbitrary\_paths = true*, even if the requested path is the rule's fixed path.
 
+Deny rules match requests regardless of the requested path, unless
+*arbitrary_paths=* was explicitly set to *false*.
+
 ## Timeouts and Limits
 
 The *[defaults]* section controls how the relay accepts and forwards requests.
