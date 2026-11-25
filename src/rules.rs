@@ -101,6 +101,9 @@ impl<'a> Destination<'a> {
             }
 
             let dest = if self.path.is_none() {
+                if rule.deny {
+                    None
+                } else
                 // If the destination has not specified a path
                 if let Some(path) = &rule.path {
                     // The rule specifies a path, use it, but strip the leading slash if present
@@ -126,9 +129,7 @@ impl<'a> Destination<'a> {
 
             trace!("Request has matched rule #{i}");
 
-            if !rule.deny
-                && let Some(dest) = dest
-            {
+            if let Some(dest) = dest {
                 // Return the resolved, permitted destination
                 return Ok(Some(dest));
             } else {
