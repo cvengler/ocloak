@@ -41,7 +41,7 @@ something else. Requests that include their own path match only rules with
 *arbitrary\_paths = true*, even if the requested path is the rule's fixed path.
 
 Deny rules match requests regardless of the requested path, unless
-*arbitrary_paths=* was explicitly set to *false*.
+*arbitrary\_paths=* was explicitly set to *false*.
 
 ## Timeouts and Limits
 
@@ -61,14 +61,14 @@ Specify durations as strings with an *ms*, *s*, *m*, or *h* suffix (for example,
 	response body. This is not a time limit for the entire request, and is meant
 	to terminate stalled connections.
 
-*max_request_size=*
+*max\_request\_size=*
 	The maximum size of an encapsulated HTTP request.
 
-*max_redirects=*
+*max\_redirects=*
 	Maximum number of redirects to follow from a gateway. Redirects must stay on
 	the same origin (scheme, host and port).
 
-*user_agent=*
+*user\_agent=*
 	Value of the User-Agent header sent to the gateway.
 
 ## TLS
@@ -84,12 +84,12 @@ to the ephemeral daemon user.
 ## Index page
 
 Optionally serve a static file to *GET /* requests. In the *[index]* section,
-specify the path to the file using *file_path=* to enable this feature.
+specify the path to the file using *file\_path=* to enable this feature.
 
 The content type header is assumed by inspecting the file's first byte, unless a
-value is explicitly configured with *content_type=*.
+value is explicitly configured with *content\_type=*.
 
-Custom HTTP response headers can be specified using *http_headers=*, which
+Custom HTTP response headers can be specified using *http\_headers=*, which
 expects a dictionary of header names to values.
 
 # SIGNALS
@@ -99,7 +99,7 @@ expects a dictionary of header names to values.
 	private key if TLS is configured.
 
 	Restart the daemon to change the listening address or apply changes to
-	outbound HTTP client settings. A change to *read_timeout=* takes effect for
+	outbound HTTP client settings. A change to *read\_timeout=* takes effect for
 	client request bodies on reload, but for gateway responses only after a
 	restart.
 
